@@ -48,27 +48,28 @@ def validate_count(value):
     Accepts either the count string or the raw bytes read back from
     the entry file, so the same check covers the pre-write guard and
     the post-write read-back verification. Returns the count as a str,
-    or raises AssertionError with a clear message.
+    or raises ValueError with a clear message.
     """
     if isinstance(value, bytes):
-        assert len(value) >= MIN_CHARS, (
-            f"entry.txt is empty, expected {MIN_CHARS}-{MAX_CHARS} chars"
-        )
-        assert len(value) <= MAX_CHARS, (
-            f"entry.txt is {len(value)} bytes, over the {MAX_CHARS} "
-            "character gate"
-        )
+        if len(value) < MIN_CHARS:
+            raise ValueError(
+                f"entry.txt is empty, expected {MIN_CHARS}-{MAX_CHARS} chars"
+            )
+        if len(value) > MAX_CHARS:
+            raise ValueError(
+                f"entry.txt is {len(value)} bytes, over the {MAX_CHARS} "
+                "character gate"
+            )
         value = value.decode("ascii")
-    assert MIN_CHARS <= len(value) <= MAX_CHARS, (
-        f"count must be {MIN_CHARS}-{MAX_CHARS} characters, "
-        f"got {len(value)}"
-    )
-    assert value.isascii() and value.isdigit(), (
-        f"count must be digits only, got {value!r}"
-    )
-    assert value.strip() == value and value != "", (
-        "count must not be only whitespace"
-    )
+    if not MIN_CHARS <= len(value) <= MAX_CHARS:
+        raise ValueError(
+            f"count must be {MIN_CHARS}-{MAX_CHARS} characters, "
+            f"got {len(value)}"
+        )
+    if not (value.isascii() and value.isdigit()):
+        raise ValueError(f"count must be digits only, got {value!r}")
+    if not (value.strip() == value and value != ""):
+        raise ValueError("count must not be only whitespace")
     return value
 
 
@@ -85,28 +86,32 @@ def verify_entry(path, expected_data):
     4. the sha256 digest of the bytes on disk matches the digest of
        the validated count, proving the file on disk is the entry.
 
-    Returns the verified count as a str. Raises AssertionError on any
+    Returns the verified count as a str. Raises ValueError on any
     mismatch, so a bad write fails loudly instead of shipping.
     """
     with open(path, "rb") as handle:
         written = handle.read()
-    assert written == expected_data, (
-        f"read-back mismatch: file holds {written!r}, "
-        f"expected {expected_data!r}"
-    )
-    assert len(written) == len(expected_data), (
-        f"byte length {len(written)} != expected {len(expected_data)}"
-    )
+    if written != expected_data:
+        raise ValueError(
+            f"read-back mismatch: file holds {written!r}, "
+            f"expected {expected_data!r}"
+        )
+    if len(written) != len(expected_data):
+        raise ValueError(
+            f"byte length {len(written)} != expected {len(expected_data)}"
+        )
     text = validate_count(written)
-    assert text.encode("ascii") == written, (
-        "character length differs from byte length: non-ASCII bytes"
-    )
+    if text.encode("ascii") != written:
+        raise ValueError(
+            "character length differs from byte length: non-ASCII bytes"
+        )
     file_digest = hashlib.sha256(written).hexdigest()
     expected_digest = hashlib.sha256(text.encode("ascii")).hexdigest()
-    assert file_digest == expected_digest, (
-        f"digest mismatch: file sha256 {file_digest} != "
-        f"expected {expected_digest}"
-    )
+    if file_digest != expected_digest:
+        raise ValueError(
+            f"digest mismatch: file sha256 {file_digest} != "
+            f"expected {expected_digest}"
+        )
     return text, file_digest
 
 
